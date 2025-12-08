@@ -252,6 +252,7 @@ class TransBlock(nn.Module):
 
         ## residual connection
         node_irreps_res = node_irreps
+        print("node_irreps", node_irreps.shape)
         node_irreps = self.norm_1(node_irreps)
 
         node_irreps, attn_weight = self.ga(
@@ -267,6 +268,10 @@ class TransBlock(nn.Module):
             add_rope=self.add_rope,
             sparse_attn=self.sparse_attn,
         )
+
+        # ====================================================================
+        # ==================== FFN Part ======================================
+        # ====================================================================
 
         if self.ffn_grid_escn is not None:
             node_irreps = self.ffn_grid_escn(node_irreps, node_irreps_res)
@@ -354,4 +359,6 @@ class TransBlock(nn.Module):
             node_irreps[:, 0, :] = node_irreps[:, 0, :] + torch.mean(attn_hidden, dim=1)
             attn_weight = attn_weight + attn_hidden
         
+    
+
         return node_irreps, attn_weight
