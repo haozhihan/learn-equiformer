@@ -75,6 +75,9 @@ def get_powers(vec, coeffs, lmax):
     out_powers = [
         coeffs[0] * torch.ones_like(vec.narrow(-1, 0, 1).unsqueeze(dim=-1))
     ]
+
+    print("l = 0, out_powers:", out_powers[0].shape)
+
     # Y is pos. Precompute spherical harmonics for all orders
     for i in range(1, lmax + 1):
         out_powers.append(
@@ -83,6 +86,8 @@ def get_powers(vec, coeffs, lmax):
                 i, vec, normalize=False, normalization="integral"
             ).unsqueeze(-1)
         )
+
+    print("l = 1, out_powers:", out_powers[1].shape)
 
     return out_powers
 
@@ -570,14 +575,24 @@ class E2former(torch.nn.Module):
         batched_data.update(neighbor_info)
         
         # Extract edge information from neighbor graph
+        # 方向
         f_edge_vec = neighbor_info["f_edge_vec"]      # Edge vectors between atoms
+        # 长度
         f_dist = neighbor_info["f_dist"]              # Edge distances
         f_poly_dist = neighbor_info["f_poly_dist"]    # Polynomial edge distances
         f_attn_mask = neighbor_info["f_attn_mask"]    # Attention mask for valid edges
         
+
+        print("f_edge_vec: ", f_edge_vec)
+        print("f_dist: ", f_dist)
+        print("f_poly_dist: ", f_poly_dist)
+        print("f_attn_mask: ", f_attn_mask)
+
+
         # Compute radial basis functions for distance encoding
         # Shape: [num_edges, num_neighbors, num_basis]
         f_dist_embedding = self.rbf(f_dist)
+        print("f_dist_embedding: ", f_dist_embedding)
 
         # =====================================================================
         # Step 7: Atom Embedding
@@ -603,6 +618,8 @@ class E2former(torch.nn.Module):
         
         # Pre-compute spherical harmonics powers for positions and edges
         # These are used for E(3)-equivariant operations throughout the network
+
+        print("f_node_pos: ", f_node_pos.shape)
         batched_data.update(
             {
                 "f_exp_node_pos": f_exp_node_pos,
@@ -613,6 +630,14 @@ class E2former(torch.nn.Module):
             }
         )
         
+
+        # print("edge_vec_powers: ", get_powers(f_edge_vec, coeffs, self.lmax))
+
+        print("self.lmax: ", self.lmax)
+
+
+        print("================= Step 9: Edge Degree Embedding =================")
+
         # =====================================================================
         # Step 9: Edge Degree Embedding
         # =====================================================================

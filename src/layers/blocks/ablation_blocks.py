@@ -722,6 +722,10 @@ def construct_radius_neighbor(
     '''
     B,L = node_pos.shape[:2]
     L2  = expand_node_pos.shape[1]
+
+    print("B: ", B)
+    print("L: ", L)
+    print("L2: ", L2)
     
     ptr = torch.cat(
             [

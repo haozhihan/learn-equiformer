@@ -241,7 +241,8 @@ class E2FormerBackbone(nn.Module):
         
         # Extract embedding dimension from E2Former decoder configuration
         # This ensures compatibility between wrapper and decoder
-        self.fea_dim = o3.Irreps(cfg.backbone_config.irreps_node_embedding)[0][0]
+        # 网络的 feature dimension
+        self.fea_dim = o3.Irreps(cfg.backbone_config.irreps_node_embedding)[0][0] # scalar channel dimension  128
         
         # Initialize learnable embeddings for atomic properties
         self.embedding = nn.Embedding(256, self.fea_dim)  # Atomic number embeddings (up to element 256)
@@ -337,7 +338,7 @@ class E2FormerBackbone(nn.Module):
             else:
                 pbc_expand_batched = None
 
-            token_embedding = self.embedding(atomic_numbers) 
+            token_embedding = self.embedding(atomic_numbers)  # 256 * 128
                 # self.embedding_charge(torch.clip(batched_data["charge"],-10,10)+10) + \
                     # self.embedding_multiplicity(torch.clip(batched_data["multiplicity"],0,20))
 
@@ -468,6 +469,9 @@ class E2FormerBackbone(nn.Module):
         Main forward pass of the model.
         """
         # PSM handles preprocessing internally
+
+        print("data: ", data)
+
         return self.forward_fn(data, token_embedding=node_embedding)
 
     @torch.jit.ignore
