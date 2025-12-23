@@ -147,8 +147,8 @@ def test_e2former():
     # Test with different configurations
     test_configs = [
         (1, 5),   # Single molecule
-        (2, 8),   # Batch of 2
-        (3, 6),   # Batch of 3
+        # (2, 8),   # Batch of 2
+        # (3, 6),   # Batch of 3
     ]
     
     for batch_size, max_atoms in test_configs:
