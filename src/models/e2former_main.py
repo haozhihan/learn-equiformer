@@ -583,16 +583,16 @@ class E2former(torch.nn.Module):
         f_attn_mask = neighbor_info["f_attn_mask"]    # Attention mask for valid edges
         
 
-        print("f_edge_vec: ", f_edge_vec)
-        print("f_dist: ", f_dist)
-        print("f_poly_dist: ", f_poly_dist)
-        print("f_attn_mask: ", f_attn_mask)
+        # print("f_edge_vec: ", f_edge_vec)
+        # print("f_dist: ", f_dist)
+        # print("f_poly_dist: ", f_poly_dist)
+        # print("f_attn_mask: ", f_attn_mask)
 
 
         # Compute radial basis functions for distance encoding
         # Shape: [num_edges, num_neighbors, num_basis]
         f_dist_embedding = self.rbf(f_dist)
-        print("f_dist_embedding: ", f_dist_embedding)
+        # print("f_dist_embedding: ", f_dist_embedding)
 
         # ======================================================  ===============
         # Step 7: Atom Embedding
@@ -619,7 +619,7 @@ class E2former(torch.nn.Module):
         # Pre-compute spherical harmonics powers for positions and edges
         # These are used for E(3)-equivariant operations throughout the network
 
-        print("f_node_pos: ", f_node_pos.shape)
+        # print("f_node_pos: ", f_node_pos.shape)
         batched_data.update(
             {
                 "f_exp_node_pos": f_exp_node_pos,
@@ -660,6 +660,10 @@ class E2former(torch.nn.Module):
         # Initialize node irreducible representations (irreps)
         # Shape: [num_atoms, (lmax+1)^2, hidden_dim]
         f_node_irreps = edge_degree_embedding_dense
+
+        print("f_node_irreps: ", f_node_irreps.shape)
+        print("f_atom_embedding: ", f_atom_embedding.shape)
+        
         
         # Add skip connection for scalar (l=0) features
         f_node_irreps[:, 0, :] = f_node_irreps[:, 0, :] + f_atom_embedding
@@ -669,9 +673,20 @@ class E2former(torch.nn.Module):
             (B, L, (self.lmax + 1) ** 2, self._node_scalar_dim), device=device
         )
 
+        print("\n")
+        print("\n")
+
+        print("======================================")
+        print("f_node_irreps: ", f_node_irreps.shape) # torch.Size([5, 9, 128])
+        print("node_irreps_his: ", node_irreps_his.shape) # torch.Size([1, 5, 9, 128])
+
+        print("\n")
+        print("\n")
+
         # =====================================================================
         # Step 10: Forward Through Transformer Blocks
         # =====================================================================
+        print("================= Step 10: Forward Through Transformer Blocks =================")
         
         # Process through each transformer block sequentially
         # Each block performs E(3)-equivariant attention and updates node features

@@ -22,8 +22,20 @@ from opt_einsum_fx import optimize_einsums_full
 from sympy.physics.wigner import wigner_6j
 from torch import fx
 
-from ..core.module_utils import SO3_Linear_e2former
-from ..layers.tensor_product import Simple_TensorProduct_oTchannel, _sum_tensors, slices_basis
+# 兼容相对导入和绝对导入
+try:
+    from ..core.module_utils import SO3_Linear_e2former
+    from ..layers.tensor_product import Simple_TensorProduct_oTchannel, _sum_tensors, slices_basis
+except ImportError:
+    # 当直接运行此文件时，使用绝对导入
+    import sys
+    from pathlib import Path
+    # 添加项目根目录到路径
+    project_root = Path(__file__).parent.parent.parent
+    if str(project_root) not in sys.path:
+        sys.path.insert(0, str(project_root))
+    from src.core.module_utils import SO3_Linear_e2former
+    from src.layers.tensor_product import Simple_TensorProduct_oTchannel, _sum_tensors, slices_basis
 
 
 class DepthWiseTensorProduct_reducesameorder(Simple_TensorProduct_oTchannel):
@@ -80,10 +92,14 @@ class DepthWiseTensorProduct_reducesameorder(Simple_TensorProduct_oTchannel):
         irreps_in2 = (
             o3.Irreps(irreps_in2) if isinstance(irreps_in2, str) else irreps_in2
         )
+
+
         if max_ir is None:
             irreps_out = (
                 o3.Irreps(irreps_out) if isinstance(irreps_out, str) else irreps_out
             )
+
+            print("irreps_out: ", irreps_out)
 
             instr = []
             out_source = []
@@ -95,6 +111,7 @@ class DepthWiseTensorProduct_reducesameorder(Simple_TensorProduct_oTchannel):
                     for i_out, (_, ir_out) in enumerate(irreps_out):
                         # if filter_ir_out is not None and ir_out not in filter_ir_out or ir_out.l > max_ir + max(irreps_in1.ls) - ir_2.l:
                         #     continue
+                        # print(ir_1 * ir_2)
                         if ir_out not in ir_1 * ir_2:
                             continue
                         ## this is the out index
@@ -136,6 +153,9 @@ class DepthWiseTensorProduct_reducesameorder(Simple_TensorProduct_oTchannel):
             irreps_out = o3.Irreps(irreps_out)
         self.out_source = out_source
 
+        print("out_source  ", out_source)
+        print("instr  ", instr)
+        
         super().__init__(
             irreps_in1,
             irreps_in2,
@@ -253,7 +273,7 @@ def CODEGEN_MAIN_LEFT_RIGHT(
     self__instructions,
     self__simulate_tp,
     self__info,
-) -> fx.GraphModule:
+) -> fx.GraphModule:  
     # 初始化输出形状
     graph = fx.Graph()
 
@@ -1016,233 +1036,6 @@ class E2TensorProductArbitraryOrder_woequal(torch.nn.Module):
         return out_new * self.path_norm
 
 
-class E2TensorProduct_FirstOrder(torch.nn.Module):
-    """Equivariant tensor product layer that can handle arbitrary order spherical harmonics.
-
-    This module implements a generalized version of the E2TensorProduct that can work with
-    any order of spherical harmonics. It combines multiple tensor products and Wigner 6-j
-    symbols to maintain equivariance.
-
-    Args:
-        irreps_in (str): Input irreducible representations specification
-        irreps_out (str): Output irreducible representations specification
-        head (int): Number of attention heads
-        order (int): Order of spherical harmonics to use
-        learnable_weight (bool, optional): Whether weights should be learnable. Defaults to True.
-        connection_mode (str, optional): Connection mode - 'uvw' or 'uvu'. Defaults to 'uvw'.
-        path_normalization (str, optional): Type of path normalization. Defaults to 'element'.
-    """
-
-    def __init__(
-        self,
-        irreps_in,
-        irreps_out,
-        head,
-        order,
-        learnable_weight=True,
-        connection_mode="uvw",
-        path_normalization="element",
-    ):
-        super().__init__()
-        self.irreps_in = irreps_in
-        self.irreps_out = irreps_out
-        self.order = order
-        self.in_c = o3.Irreps(self.irreps_in)[0][0]
-        self.out_c = o3.Irreps(self.irreps_out)[0][0]
-        self.lmax = e3nn.o3.Irreps(irreps_in)[-1][1][0]
-        self.head = head
-        assert connection_mode in [
-            "uvw",
-            "uvu",
-        ], "connection_mode must be either 'uvw' or 'uvu'"
-        if not learnable_weight:
-            connection_mode = "uvu"
-
-        if connection_mode == "uvw":
-            warnings.warn(
-                " sorry current this first order functio use w1*w2 to simulate uvw mode"
-            )
-            connection_mode = "uvu"
-            self.w1 = SO3_Linear_e2former(self.in_c, self.in_c, lmax=self.lmax)
-            self.w2 = SO3_Linear_e2former(self.in_c, self.out_c, lmax=self.lmax)
-        else:
-            self.w1 = nn.Identity()
-            self.w2 = nn.Identity()
-
-        if order != 1:
-            raise ValueError(
-                "sorry, E2TensorProduct_FirstOrder function only  support order rij with order 1"
-            )
-        # Initialize main tensor product for highest order
-        self.tensor_product_tp_component_1 = DepthWiseTensorProduct_reducesameorder(
-            irreps_in,
-            f"1x{1}e",
-            irreps_out,
-            irrep_normalization="component",
-            path_normalization="none",
-            learnable_weight=learnable_weight,
-            connection_mode=connection_mode,
-        )
-
-        self.coeffs = self.get_coeffs()
-        # Setup path normalization
-        if path_normalization == "element" or path_normalization is None:
-            path_norm = 1 / torch.sqrt(
-                get_path_norm(irreps_in, f"1x{order}e", irreps_in).reshape(1, -1, 1)
-            )
-            self.register_buffer("path_norm", path_norm)
-        else:
-            self.register_buffer("path_norm", torch.ones(1))
-
-    @staticmethod
-    def get_coeffs():
-        # Normalization coefficients for different orders
-        #       0,   1               2           3           4           5           6
-        return [
-            1,
-            2.046653509140,
-            1.29441716,
-            0.84739512,
-            0.56493002,
-            0.38087577,
-            0.25875416,
-        ]
-
-    def forward(
-        self,
-        pos,
-        exp_pos,
-        h,
-        exp_h,
-        alpha_ij,
-        f_sparse_idx_expnode=None,
-        batched_data={},
-    ):  # f_sparse_idx_expnode
-        """Forward pass of the layer.
-
-        Args:
-            pos (torch.Tensor): B*L2
-            h (torch.Tensor): B*L2
-            alpha_ij (torch.Tensor): B*L1*L2/topK, when topK
-
-        Returns:
-            torch.Tensor: Transformed features
-        """
-        exp_h = self.w1(exp_h)
-        f_N1, topK = alpha_ij.shape[:2]
-        f_N2 = exp_pos.shape[0]
-        if "Y_powers" in batched_data:
-            Y_powers = batched_data["Y_powers"]
-            exp_Y_powers = batched_data["exp_Y_powers"]
-
-        else:
-            Y_powers = []
-            # Y is pos. Precompute spherical harmonics for all orders
-            for i in range(self.order + 1):
-                if i == 0:
-                    Y_powers.append(
-                        self.coeffs[i]
-                        * torch.ones_like(pos.narrow(-1, 0, 1).unsqueeze(dim=-1))
-                    )
-                else:
-                    Y_powers.append(
-                        self.coeffs[i]
-                        * e3nn.o3.spherical_harmonics(
-                            i, pos, normalize=False, normalization="integral"
-                        ).unsqueeze(-1)
-                    )
-
-            exp_Y_powers = []
-            # Y is pos. Precompute spherical harmonics for all orders
-            for i in range(self.order + 1):
-                if i == 0:
-                    exp_Y_powers.append(
-                        self.coeffs[i]
-                        * torch.ones_like(exp_pos.narrow(-1, 0, 1).unsqueeze(dim=-1))
-                    )
-                else:
-                    exp_Y_powers.append(
-                        self.coeffs[i]
-                        * e3nn.o3.spherical_harmonics(
-                            i, exp_pos, normalize=False, normalization="integral"
-                        ).unsqueeze(-1)
-                    )
-
-        # # Compute main component
-        component_1 = exp_h.reshape(
-            f_N2, (self.lmax + 1) ** 2, self.head, self.in_c // self.head
-        )
-        if f_sparse_idx_expnode is not None:
-            component_1 = torch.sum(
-                alpha_ij.unsqueeze(dim=2).unsqueeze(dim=-1)
-                * component_1[f_sparse_idx_expnode],
-                dim=1,
-            )
-        else:
-            component_1 = torch.einsum("bjh,johk -> bohk", alpha_ij, component_1)
-
-        component_1 = component_1.reshape(f_N1, (self.lmax + 1) ** 2, self.in_c)
-        component_1 = self.tensor_product_tp_component_1(
-            component_1, Y_powers[self.order]
-        )
-
-        component_2 = self.tensor_product_tp_component_1(
-            exp_h, exp_Y_powers[self.order]
-        )
-        component_2 = component_2.reshape(
-            f_N2, -1, self.head, component_2.shape[-1] // self.head
-        )
-        if f_sparse_idx_expnode is not None:
-            component_2 = torch.sum(
-                alpha_ij.unsqueeze(dim=2).unsqueeze(dim=-1)
-                * component_2[f_sparse_idx_expnode],
-                dim=1,
-            )
-        else:
-            component_2 = torch.einsum("bjh,johk -> bohk", alpha_ij, component_2)
-        component_2 = component_2.reshape(f_N1, -1, component_2.shape[-2:].numel())
-
-        return self.w2(component_1 - component_2) * self.path_norm
-
-    def vanilla_forward(
-        self, pos, exp_pos, h, exp_h, alpha_ij, f_sparse_idx_expnode=None
-    ):
-        """Simple forward pass without component decomposition.
-
-        This method provides a simpler implementation for comparison and testing.
-
-        Args:
-            pos (torch.Tensor): Position coordinates
-            h (torch.Tensor): Input features
-            alpha_ij (torch.Tensor): Attention weights
-
-        Returns:
-            torch.Tensor: Transformed features
-        """
-        exp_h = self.w1(exp_h)
-        # L2 = pos.shape[1]
-        # B,L1 = alpha_ij.shape[:2]
-        f_N1, topK = alpha_ij.shape[:2]
-        f_N2 = exp_pos.shape[0]
-
-        delta_pos = pos.unsqueeze(dim=1) - exp_pos.unsqueeze(dim=0)
-        delta_pos_order_l = (
-            e3nn.o3.spherical_harmonics(
-                self.order, delta_pos, normalize=False, normalization="integral"
-            )
-            * self.coeffs[self.order]
-        )
-        delta_pos_order_l = delta_pos_order_l.unsqueeze(dim=-1)
-
-        h_new = exp_h.reshape(f_N2, -1, self.head, self.in_c // self.head)
-        h_new = torch.einsum("bjh, johk -> bjohk", alpha_ij, h_new)
-        h_new = h_new.reshape(f_N1, f_N2, -1, self.in_c)
-        out_new = self.tensor_product_tp_component_1(h_new, delta_pos_order_l)
-        out_new = torch.sum(out_new, dim=1)
-        return self.w2(out_new) * self.path_norm
-      
-
-
 class E2TensorProductArbitraryOrder(torch.nn.Module):
     """Equivariant tensor product layer that can handle arbitrary order spherical harmonics.
 
@@ -1504,35 +1297,55 @@ class E2TensorProductArbitraryOrder(torch.nn.Module):
         f_N2 = exp_pos.shape[0]
 
         delta_pos = pos.unsqueeze(dim=1) - exp_pos.unsqueeze(dim=0)
+
+        print("delta_pos ", delta_pos.shape)
+
         delta_pos_order_l = (
             e3nn.o3.spherical_harmonics(
                 self.order, delta_pos, normalize=False, normalization="integral"
             )
             * self.coeffs[self.order]
         )
+        print("self.order ", self.order)
+        print("delta_pos_order_l ", delta_pos_order_l.shape)
+
         delta_pos_order_l = delta_pos_order_l.unsqueeze(dim=-1)
 
         h_new = exp_h.reshape(f_N2, -1, self.head, self.in_c // self.head)
+        print("h_new ", h_new.shape)
+        print("alpha_ij ", alpha_ij.shape)
         h_new = torch.einsum("bjh, johk -> bjohk", alpha_ij, h_new)
         h_new = h_new.reshape(f_N1, f_N2, -1, self.in_c)
+        
+        print("每个节点的特征 shape  ", h_new.shape)
+
+        print("delta_pos_order_l 的 shape  ", delta_pos_order_l.shape)
+
+        print("================= tp cal ====================")
+        
         out_new = self.tensor_product_tp_component_1(h_new, delta_pos_order_l)
         out_new = torch.sum(out_new, dim=1)
+        
         return out_new * self.path_norm
 
 if __name__ == '__main__':
     import torch
 
-    from molfm.models.psm.equivariant.wigner6j.tensor_product import (
-        E2TensorProductFirstOrder,
-        E2TensorProductSecondOrder,
-    )
+    # from molfm.models.psm.equivariant.wigner6j.tensor_product import (
+    #     E2TensorProductFirstOrder,
+    #     E2TensorProductSecondOrder,
+    # )
 
     for o in range(1, 4):
         head, hidden = 8, 16
+        
         f_N1, f_N2 = 7, 8
+        
         alpha_ij = torch.randn(f_N1, f_N2, head)
+        
         h = torch.randn(f_N1, (o + 1) ** 2, head * hidden)
         exp_h = torch.randn(f_N2, (o + 1) ** 2, head * hidden)
+        
         pos = torch.randn(f_N1, 3)
         exp_pos = torch.randn(f_N2, 3)
 
@@ -1550,6 +1363,8 @@ if __name__ == '__main__':
         learnable_weight = True
         connection_mode = "uvw"
 
+        print(irreps_in)
+
         # Test arbitrary order with second order case
         model_arbitrary = E2TensorProductArbitraryOrder(
             irreps_in,
@@ -1564,8 +1379,19 @@ if __name__ == '__main__':
 
         out_second = model_arbitrary.vanilla_forward(pos, exp_pos, h, exp_h, alpha_ij)
         # Print comparison metrics
+
+        print("out_arbitrary ", out_arbitrary.shape)
+        print("out_second ", out_second.shape)
+
+        
         diff = out_arbitrary / out_second
         print(f"\nComparing Arbitrary Order (n={o}) vs Second Order:")
         print(f"Max difference: {torch.max(diff):.8f}")
         print(f"Mean difference: {torch.mean(diff):.8f}")
         print(f"Min difference: {torch.min(diff):.8f}")
+        print(torch.allclose(
+            out_arbitrary,
+            out_second,
+            rtol=1e-2,
+            atol=1e-3
+        ))

@@ -48,6 +48,9 @@ class ZeroOrderAttention(BaseAttentionOrder):
             edge_channel_list + [self.scalar_dim]
         )
         
+        # print("in zero-order: rad_func_intputhead: ", self.rad_func_intputhead)
+        # print("in zero-order: scalar_dim: ", self.scalar_dim)
+
         self.proj_zero = SO3_Linear_e2former(
             self.scalar_dim,
             self.scalar_dim,
@@ -56,11 +59,17 @@ class ZeroOrderAttention(BaseAttentionOrder):
     
     def forward(self, alpha, value, x_edge, node_pos, edge_dis, batched_data, **kwargs):
         """Apply zero-order attention."""
+
+
         f_N1 = value.shape[0]
         f_sparse_idx_node = batched_data["f_sparse_idx_node"]
+
+        print("in zero-order: value:", value.shape)
+        print("in zero-order: f_sparse_idx_node:", f_sparse_idx_node.shape)
         
         # Apply input head weighting
         inputhead = self.rad_func_intputhead(x_edge)
+        print(inputhead.shape)
         alpha = alpha.reshape(f_N1, -1, self.num_attn_heads, 1) * inputhead.reshape(
             alpha.shape[:2] + (self.num_attn_heads, -1)
         )
@@ -291,6 +300,10 @@ class AllOrderAttention(BaseAttentionOrder):
         """Apply all-order attention with gating."""
         f_N1 = value.shape[0]
         
+        print("in ALl order: f_N1", f_N1)
+        print("in ALl order: edge_feature", edge_feature.shape)
+        print("in ALl order: node_irreps_input", node_irreps_input.shape)
+
         # Compute gate
         node_gate = torch.nn.functional.sigmoid(
             self.pos_embedding_proj(edge_feature)
@@ -355,6 +368,8 @@ class AllOrderAttention(BaseAttentionOrder):
             + node_output_fir * node_gate[:, None, self.scalar_dim :]
             + node_output_sec * (1 - node_gate[:, None, self.scalar_dim :])
         )
+
+        # print("in ALl order: node_output", node_output.shape())
         
         return node_output
 

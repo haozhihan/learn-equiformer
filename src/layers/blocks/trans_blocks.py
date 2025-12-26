@@ -75,6 +75,9 @@ class TransBlock(nn.Module):
         self.layer_id = layer_id
         func = None
 
+        print("attn_type: ", attn_type)
+
+
         if "+" in attn_type:
             attn_type = attn_type.split("+")
             if layer_id >= int(attn_type[0][-1]) + int(attn_type[1][-1]):
@@ -90,7 +93,7 @@ class TransBlock(nn.Module):
             # Import here to avoid circular dependency
             from ..attention.sparse import E2AttentionArbOrder_sparse
             func = E2AttentionArbOrder_sparse
-
+            print("hhz!!!!!!!!!!!!!!!")
         elif isinstance(attn_type, str) and attn_type.startswith("escn"):
             from .ablation_blocks import MessageBlock_escn
             func = MessageBlock_escn
@@ -101,7 +104,9 @@ class TransBlock(nn.Module):
             raise ValueError(
                 f" sorry, the attn type is not support, please check {attn_type}"
             )
-        self.attn_weight_input_dim = attn_weight_input_dim
+
+        self.attn_weight_input_dim = attn_weight_input_dim # 128
+        
         self.ga = func(
             irreps_node_input,
             attn_weight_input_dim,  # e.g. rbf(|r_ij|) or relative pos in sequence
@@ -252,8 +257,27 @@ class TransBlock(nn.Module):
 
         ## residual connection
         node_irreps_res = node_irreps
+        
         print("node_irreps", node_irreps.shape)
+        
         node_irreps = self.norm_1(node_irreps)
+
+
+
+        print("=======================================")
+        print("=======================================")
+        print("=======================================")
+
+        print("node_pos: ", node_pos.shape)
+        print("node_irreps: ", node_irreps.shape)
+        print("edge_dis: ", edge_dis.shape)
+        print("poly_dist: ", poly_dist.shape)
+        print("edge_vec: ", edge_vec.shape)
+        print("attn_mask: ", attn_mask.shape)
+        print("batched_data: ", batched_data)
+
+
+
 
         node_irreps, attn_weight = self.ga(
             node_pos=node_pos,
@@ -269,15 +293,29 @@ class TransBlock(nn.Module):
             sparse_attn=self.sparse_attn,
         )
 
+        print("=======================================")
+        print("=======================================")
+        print("=======================================")
+
         # ====================================================================
         # ==================== FFN Part ======================================
         # ====================================================================
+        print("ffn_grid_escn: ", self.ffn_grid_escn)
+        print("drop_path: ", self.drop_path)
+        print("ffn_s2: ", self.ffn_s2)
+        print("ffn_s3: ", self.ffn_s3)
+        print("so2_ffn: ", self.so2_ffn)
+        print("manybody_ffn: ", self.manybody_ffn)
+        print("edge_attn: ", self.edge_attn)
 
         if self.ffn_grid_escn is not None:
             node_irreps = self.ffn_grid_escn(node_irreps, node_irreps_res)
             return node_irreps, attn_weight
+        
         if self.drop_path is not None:
             node_irreps = self.drop_path(node_irreps, batch)
+        
+        
         node_irreps = node_irreps + node_irreps_res
 
         if self.ffn_s2 is not None and self.ffn_s3 is None:

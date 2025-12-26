@@ -265,7 +265,7 @@ def create_trans_block(
     return TransBlock(
         irreps_node_input=irreps_node_embedding,
         irreps_node_output=irreps_node_embedding,
-        attn_weight_input_dim=number_of_basis,
+        attn_weight_input_dim=number_of_basis, #128
         num_attn_heads=num_attn_heads,
         attn_scalar_head=attn_scalar_head,
         irreps_head=irreps_head,

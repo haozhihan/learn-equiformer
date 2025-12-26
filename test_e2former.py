@@ -111,8 +111,8 @@ def test_e2former():
         'max_radius': 6.0,
         'basis_type': 'gaussian',
         'number_of_basis': 32,
-        'num_attn_heads': 4,
-        'attn_scalar_head': 16,
+        'num_attn_heads': 4, # head == 4
+        'attn_scalar_head': 16, # 这是干啥的？
         'irreps_head': '32x0e+32x1e+32x2e',
         'rescale_degree': False,
         'nonlinear_message': False,

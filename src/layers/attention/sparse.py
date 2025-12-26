@@ -139,14 +139,14 @@ class E2AttentionArbOrder_sparse(BaseE2Attention):
             attn_weight: Unchanged attention weights
         """
         
-        f_N1 = node_irreps_input.shape[0]
-        topK = attn_weight.shape[1]
+        f_N1 = node_irreps_input.shape[0] # atom number
+        topK = attn_weight.shape[1] # 不知道
         f_sparse_idx_node = batched_data["f_sparse_idx_node"]
 
-        print("f_N1", f_N1)
-        print("topK",topK)
-        print("attn_weight",attn_weight)
-        print("f_sparse_idx_node",f_sparse_idx_node)
+        print("f_N1: ", f_N1)
+        print("topK: ", topK)
+        print("attn_weight ", attn_weight.shape)
+        print("f_sparse_idx_node ", f_sparse_idx_node.shape)
         
         # Mask attention weights
         attn_weight = attn_weight.masked_fill(attn_mask, 0)
@@ -157,7 +157,7 @@ class E2AttentionArbOrder_sparse(BaseE2Attention):
         x_edge, src_node, tgt_node = self.compute_edge_features(
             attn_weight, atomic_numbers, f_N1, topK, f_sparse_idx_node
         )
-        print("x_edge", x_edge)
+        print("x_edge ", x_edge.shape)
 
         # Compute alpha weights using alpha module
         alpha = self.alpha_module(
@@ -169,6 +169,8 @@ class E2AttentionArbOrder_sparse(BaseE2Attention):
         
         # Apply softmax normalization
         alpha = self.apply_softmax(alpha, poly_dist, attn_mask)
+
+        print("alpha: ", alpha.shape)
         
         # Store original alpha for all-order attention
         alpha_org = alpha
